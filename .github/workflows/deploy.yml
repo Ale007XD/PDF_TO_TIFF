@@ -1,4 +1,4 @@
-name: 'CI/CD: Автоматический билд и деплой на VPS'
+name: "CI/CD: Автоматический билд и деплой на VPS"
 
 on:
   push:
@@ -11,69 +11,85 @@ env:
 
 jobs:
   deploy:
-    name: 'Сборка и деплой на VPS'
+    name: "Сборка и деплой на VPS"
     runs-on: ubuntu-latest
 
     steps:
-    - name: 'SSH-деплой на VPS'
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USERNAME }}
-        key: ${{ secrets.VPS_SSH_KEY }}
-        port: ${{ secrets.VPS_PORT }}
-        script: |
-          set -e
-          
-          echo "⏬ Обновление проекта с GitHub..."
-          if [ ! -d /home/${{ env.APP_NAME }} ]; then
-            git clone https://github.com/${{ github.repository }} /home/${{ env.APP_NAME }}
-          else
-            cd /home/${{ env.APP_NAME }}
-            git fetch origin
-            git reset --hard origin/main
-          fi
+      - name: "SSH-деплой на VPS"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
 
-          cd /home/${{ env.APP_NAME }}
+            APP_DIR="$HOME/apps/${{ env.APP_NAME }}"
+            REPO_URL="https://github.com/${{ github.repository }}"
 
-          echo "🛑 Остановка старого приложения..."
-          docker compose down --remove-orphans || true
+            echo "⏬ Обновление проекта с GitHub..."
+            mkdir -p "$APP_DIR"
 
-          echo "🧹 Очистка старых образов..."
-          docker image prune -f
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone "$REPO_URL" "$APP_DIR"
+            else
+              cd "$APP_DIR"
+              git fetch origin
+              git reset --hard origin/main
+            fi
 
-          echo "🔨 Сборка Docker-образа локально на VPS..."
-          docker compose build --no-cache
+            cd "$APP_DIR"
 
-          echo "🚀 Запуск приложения..."
-          docker compose up -d --remove-orphans
+            # Проверка docker и docker compose (v2 - подкоманда)
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "❌ Docker не установлен на VPS. Установите Docker и повторите."
+              exit 1
+            fi
 
-          echo "📋 Статус контейнеров:"
-          docker compose ps
-          
-          echo "📄 Логи:"
-          docker compose logs --tail=20
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "❌ 'docker compose' недоступен. Установите Docker Compose v2."
+              exit 1
+            fi
 
-          echo "✅ Деплой завершён!"
-          
+            echo "🛑 Остановка старого приложения..."
+            docker compose down --remove-orphans || true
+
+            echo "🧹 Очистка старых образов..."
+            docker image prune -f || true
+
+            echo "🔨 Сборка Docker-образа локально на VPS..."
+            docker compose build --no-cache
+
+            echo "🚀 Запуск приложения..."
+            docker compose up -d --remove-orphans
+
+            echo "📋 Статус контейнеров:"
+            docker compose ps
+
+            echo "📄 Логи (последние 20 строк):"
+            docker compose logs --tail=20
+
+            echo "✅ Деплой завершён!"
+
   health-check:
-    name: 'Пост-деплой проверка'
+    name: "Пост-деплой проверка"
     runs-on: ubuntu-latest
     needs: deploy
     if: success()
 
     steps:
-    - name: 'Ожидание запуска'
-      run: sleep 20
+      - name: "Ожидание запуска"
+        run: sleep 20
 
-    - name: 'Health-check через curl'
-      run: |
-        echo "Проверяем работу приложения..."
-        curl -f http://${{ secrets.VPS_HOST }}:8080/health || exit 1
-        echo "✅ Приложение отвечает!"
+      - name: "Health-check через curl"
+        run: |
+          echo "Проверяем работу приложения..."
+          curl -f http://${{ secrets.VPS_HOST }}:8080/health || exit 1
+          echo "✅ Приложение отвечает!"
 
-    - name: 'Финальное уведомление'
-      run: |
-        echo "🚀 CI/CD завершено!"
-        echo "🖥️ Хост: ${{ secrets.VPS_HOST }}"
-        echo "📦 Приложение: ${{ env.APP_NAME }}"
+      - name: "Финальное уведомление"
+        run: |
+          echo "🚀 CI/CD завершено!"
+          echo "🖥️ Хост: ${{ secrets.VPS_HOST }}"
+          echo "📦 Приложение: ${{ env.APP_NAME }}"
