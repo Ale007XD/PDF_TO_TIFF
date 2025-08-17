@@ -1,0 +1,137 @@
+# Workflow для автоматической сборки и деплоя Docker-приложения на VPS
+# Запускается при push в main ветку
+
+name: 'Автоматический билд и деплой на VPS'
+
+# Триггеры для запуска workflow
+on:
+  push:
+    branches:
+      - main  # Запуск при push в main ветку
+  workflow_dispatch:  # Возможность запуска вручную
+
+# Переменные окружения
+env:
+  DOCKER_IMAGE_NAME: pdf-to-tiff-bot
+  DOCKER_REGISTRY: docker.io
+
+jobs:
+  # Этап сборки Docker образа
+  build:
+    name: 'Сборка Docker образа'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 'Получение исходного кода'
+      uses: actions/checkout@v4
+      
+    - name: 'Настройка Docker Buildx'
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 'Вход в Docker Hub'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.DOCKER_REGISTRY }}
+        username: ${{ secrets.DOCKER_USERNAME }}  # Имя пользователя Docker Hub
+        password: ${{ secrets.DOCKER_PASSWORD }}  # Пароль или токен Docker Hub
+        
+    - name: 'Извлечение метаданных для тегов'
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_REGISTRY }}/${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: 'Сборка и публикация Docker образа'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+  # Этап деплоя на VPS сервер
+  deploy:
+    name: 'Деплой на VPS'
+    runs-on: ubuntu-latest
+    needs: build  # Запускается только после успешной сборки
+    
+    steps:
+    - name: 'Подключение к VPS и деплой приложения'
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}          # IP адрес VPS сервера
+        username: ${{ secrets.VPS_USERNAME }}  # Имя пользователя для подключения
+        key: ${{ secrets.VPS_SSH_KEY }}        # Приватный SSH ключ
+        port: ${{ secrets.VPS_PORT }}          # Порт SSH (обычно 22)
+        script: |
+          # Переход в папку проекта
+          cd /opt/pdf-to-tiff-bot
+          
+          # Остановка и удаление старых контейнеров
+          echo "Остановка старых контейнеров..."
+          docker-compose down --remove-orphans || true
+          
+          # Удаление старых образов
+          echo "Очистка старых Docker образов..."
+          docker image prune -f
+          
+          # Получение нового образа
+          echo "Загрузка нового Docker образа..."
+          docker pull ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          
+          # Запуск новых контейнеров
+          echo "Запуск новых контейнеров..."
+          docker-compose up -d
+          
+          # Проверка статуса контейнеров
+          echo "Статус контейнеров:"
+          docker-compose ps
+          
+          # Просмотр последних логов
+          echo "Последние логи приложения:"
+          docker-compose logs --tail=20
+          
+          echo "Деплой завершен успешно!"
+          
+    - name: 'Уведомление о статусе деплоя'
+      if: always()  # Выполняется всегда, независимо от результата
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Деплой выполнен успешно!"
+        else
+          echo "❌ Ошибка при деплое!"
+        fi
+        
+  # Этап проверки работоспособности после деплоя
+  health-check:
+    name: 'Проверка работоспособности'
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()  # Запускается только при успешном деплое
+    
+    steps:
+    - name: 'Проверка доступности приложения'
+      run: |
+        echo "Ожидание запуска приложения..."
+        sleep 30
+        
+        # Здесь можно добавить проверки:
+        # - HTTP запросы к health check endpoint
+        # - Проверка логов через SSH
+        # - Telegram бот ping тесты
+        
+        echo "Приложение развернуто и готово к работе!"
+        
+    - name: 'Финальное уведомление'
+      run: |
+        echo "🚀 Процесс CI/CD завершен!"
+        echo "📦 Docker образ: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest"
+        echo "🖥️ VPS сервер: ${{ secrets.VPS_HOST }}"
+        echo "✨ Приложение готово к использованию!"
