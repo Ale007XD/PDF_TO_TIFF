@@ -5,7 +5,6 @@ def is_safe_filename(fn):
     return not any(x in fn for x in forbidden) and fn.strip() != ""
 
 def get_file_size_mb(file):
-    # aiogram Document или путь до файла
     if hasattr(file, "file_size"):
         return file.file_size / 1024 / 1024
     elif isinstance(file, str) and os.path.isfile(file):
