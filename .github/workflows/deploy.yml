@@ -26,15 +26,15 @@ jobs:
           set -e
           
           echo "⏬ Обновление проекта с GitHub..."
-          if [ ! -d /opt/${{ env.APP_NAME }} ]; then
-            git clone https://github.com/${{ github.repository }} /opt/${{ env.APP_NAME }}
+          if [ ! -d /home/${{ env.APP_NAME }} ]; then
+            git clone https://github.com/${{ github.repository }} /home/${{ env.APP_NAME }}
           else
-            cd /opt/${{ env.APP_NAME }}
+            cd /home/${{ env.APP_NAME }}
             git fetch origin
             git reset --hard origin/main
           fi
 
-          cd /opt/${{ env.APP_NAME }}
+          cd /home/${{ env.APP_NAME }}
 
           echo "🛑 Остановка старого приложения..."
           docker compose down --remove-orphans || true
