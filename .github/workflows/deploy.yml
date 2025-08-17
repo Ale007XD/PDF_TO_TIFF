@@ -17,14 +17,16 @@ jobs:
     steps:
       - name: "SSH-деплой на VPS"
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}  # Правильный экспорт из секретов
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          envs: BOT_TOKEN
           script: |
             set -e
+            export BOT_TOKEN="${BOT_TOKEN}"
 
             APP_DIR="$HOME/apps/${{ env.APP_NAME }}"
             REPO_URL="https://github.com/${{ github.repository }}"
@@ -53,7 +55,8 @@ jobs:
 
             echo "🛑 Остановка старого приложения..."
             docker compose down --remove-orphans || true
-
+            # Обязательно удаляем предыдущий контейнер, если тот был зависшим
+            docker rm -f pdf_to_tiff_bot || true
             echo "🧹 Очистка старых образов..."
             docker image prune -f || true
 
@@ -61,7 +64,7 @@ jobs:
             docker compose build --no-cache
 
             echo "🚀 Запуск приложения..."
-            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
+            docker compose up -d --remove-orphans
 
             echo "📋 Статус контейнеров:"
             docker compose ps
@@ -76,7 +79,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     if: success()
-
     steps:
       - name: "Ожидание запуска"
         run: sleep 20
