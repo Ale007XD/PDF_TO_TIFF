@@ -1,0 +1,6 @@
+aiogram==3.*
+python-dotenv
+python-magic
+filetype
+aiohttp
+tqdm
