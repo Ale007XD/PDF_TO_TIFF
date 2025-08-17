@@ -1,0 +1,33 @@
+version: '3.8'
+services:
+  bot:
+    build: .
+    image: pdf_to_tiff
+    restart: always
+    env_file:
+      - .env
+    secrets:
+      - source: bot_token
+        target: bot_token
+      - source: public_base_url
+        target: public_base_url
+      - source: publish_dir
+        target: publish_dir
+      - source: tmp_dir
+        target: tmp_dir
+      - source: gs_path
+        target: gs_path
+    volumes:
+      - /srv/files:/srv/files
+      - /tmp/bot:/tmp/bot
+secrets:
+  bot_token:
+    external: true
+  public_base_url:
+    external: true
+  publish_dir:
+    external: true
+  tmp_dir:
+    external: true
+  gs_path:
+    external: true
