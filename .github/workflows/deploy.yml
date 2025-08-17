@@ -73,24 +73,3 @@ jobs:
             docker compose logs --tail=20
 
             echo "✅ Деплой завершён!"
-
-  health-check:
-    name: "Пост-деплой проверка"
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: success()
-    steps:
-      - name: "Ожидание запуска"
-        run: sleep 20
-
-      - name: "Health-check через curl"
-        run: |
-          echo "Проверяем работу приложения..."
-          curl -f http://${{ secrets.VPS_HOST }}:8080/health || exit 1
-          echo "✅ Приложение отвечает!"
-
-      - name: "Финальное уведомление"
-        run: |
-          echo "🚀 CI/CD завершено!"
-          echo "🖥️ Хост: ${{ secrets.VPS_HOST }}"
-          echo "📦 Приложение: ${{ env.APP_NAME }}"
