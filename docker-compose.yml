@@ -1,33 +1,14 @@
-version: '3.8'
 services:
   bot:
     build: .
-    image: pdf_to_tiff
+    container_name: pdf_to_tiff_bot
     restart: always
-    env_file:
-      - .env
-    secrets:
-      - source: bot_token
-        target: bot_token
-      - source: public_base_url
-        target: public_base_url
-      - source: publish_dir
-        target: publish_dir
-      - source: tmp_dir
-        target: tmp_dir
-      - source: gs_path
-        target: gs_path
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+    # откройте порт, если бот работает как веб-сервер
+    # ports:
+    #   - "8080:8080"
     volumes:
-      - /srv/files:/srv/files
-      - /tmp/bot:/tmp/bot
-secrets:
-  bot_token:
-    external: true
-  public_base_url:
-    external: true
-  publish_dir:
-    external: true
-  tmp_dir:
-    external: true
-  gs_path:
-    external: true
+      - ./temp:/app/temp
+    # при необходимости добавьте другие переменные из секретов:
+    # - ANOTHER_SECRET=${ANOTHER_SECRET}
