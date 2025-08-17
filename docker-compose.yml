@@ -4,11 +4,6 @@ services:
     container_name: pdf_to_tiff_bot
     restart: always
     environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-    # откройте порт, если бот работает как веб-сервер
-    # ports:
-    #   - "8080:8080"
+      - BOT_TOKEN
     volumes:
       - ./temp:/app/temp
-    # при необходимости добавьте другие переменные из секретов:
-    # - ANOTHER_SECRET=${ANOTHER_SECRET}
