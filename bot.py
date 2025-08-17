@@ -51,125 +51,58 @@ async def cmd_start(message: types.Message):
 async def cmd_help(message: types.Message):
     await message.answer(HELP_TEXT)
 
-# Обработчик файлов PDF
-@dp.message(lambda message: message.document is not None)
-async def handle_document(message: types.Message):
-    """Обработчик загруженных документов"""
-    
-    # Проверяем тип файла
-    if not message.document.file_name.lower().endswith('.pdf'):
-        await message.answer("⚠️ Поддерживаются только PDF файлы!")
+@dp.message(lambda m: m.document is not None)
+async def handle_doc(message: types.Message):
+    doc = message.document
+    filename = doc.file_name
+    size_mb = get_file_size_mb(doc)
+
+    # Проверка имени и расширения
+    if not is_safe_filename(filename) or not filename.lower().endswith('.pdf'):
+        await message.answer("Файл должен быть PDF и с валидным именем.")
         return
-    
-    # Проверяем размер файла
-    file_size_mb = message.document.file_size / (1024 * 1024)
-    if file_size_mb > MAX_FILE_MB:
-        await message.answer(f"⚠️ Размер файла превышает лимит {MAX_FILE_MB}MB!")
+    # Проверка размера
+    if size_mb > MAX_FILE_MB:
+        await message.answer(f"Размер файла превышает лимит {MAX_FILE_MB}MB.")
         return
-    
-    # Проверяем безопасность имени файла
-    if not is_safe_filename(message.document.file_name):
-        await message.answer("⚠️ Недопустимое имя файла!")
-        return
-    
-    await message.answer("📄 Начинаю обработку PDF...")
-    
-    # Создаем уникальные имена файлов
-    unique_id = str(uuid.uuid4())
-    safe_filename = f"{unique_id}.pdf"
-    pdf_path = os.path.join(TMP_DIR, safe_filename)
-    tiff_filename = f"{unique_id}.tiff"
-    tiff_path = os.path.join(PUBLISH_DIR, tiff_filename)
-    
+
+    await message.answer("Файл получен, конвертирую...")
+    # Уникальная рабочая папка в TMP для изоляции
+    u = str(uuid.uuid4())
+    tmp_dir = os.path.join(TMP_DIR, u)
+    os.makedirs(tmp_dir, exist_ok=True)
+    src_pdf_path = os.path.join(tmp_dir, "input.pdf")
+    await bot.download(doc, src_pdf_path)
+
     try:
-        # Скачиваем PDF во временную папку
-        file_info = await bot.get_file(message.document.file_id)
-        await bot.download_file(file_info.file_path, pdf_path)
-        
-        # Запускаем конвертацию в отдельном процессе
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            executor, 
-            process_pdf, 
-            pdf_path, 
-            tiff_path, 
-            DPI_DEFAULT, 
-            GS_PATH
+            executor,
+            process_pdf,
+            src_pdf_path, filename, tmp_dir, PUBLISH_DIR, PUBLIC_BASE_URL, GS_PATH, DPI_DEFAULT
         )
-        
-        # Проверяем результат конвертации
-        if not result['success']:
-            await message.answer(f"❌ Ошибка конвертации: {result['error']}")
-            return
-        
-        # Проверяем, что файл был создан
-        if not os.path.exists(tiff_path):
-            await message.answer("❌ Файл TIFF не был создан!")
-            return
-        
-        # Получаем размер результирующего файла
-        tiff_size_mb = get_file_size_mb(tiff_path)
-        
-        # Формируем публичную ссылку
-        download_url = f"{PUBLIC_BASE_URL.rstrip('/')}/{tiff_filename}"
-        
-        # Отправляем результат
-        success_message = (
-            f"✅ Конвертация завершена!\n\n"
-            f"📊 Размер TIFF: {tiff_size_mb:.2f} MB\n"
-            f"🔗 Прямая ссылка: {download_url}\n\n"
-            f"💡 CMYK TIFF может некорректно отображаться в обычных просмотрщиках. "
-            f"Используйте профессиональные редакторы для правильного просмотра."
-        )
-        
-        # Пытаемся отправить файл как документ (если размер позволяет)
-        if tiff_size_mb <= 50:  # Telegram лимит 50MB
-            try:
-                tiff_file = FSInputFile(tiff_path, filename=f"converted_{message.document.file_name[:-4]}.tiff")
-                await message.answer_document(tiff_file, caption=success_message)
-            except Exception as e:
-                # Если не удалось отправить файл, просто отправляем ссылку
-                await message.answer(success_message)
-        else:
-            # Файл слишком большой для Telegram, отправляем только ссылку
-            await message.answer(success_message)
-            
     except Exception as e:
-        await message.answer(f"❌ Произошла ошибка: {str(e)}")
-    
-    finally:
-        # Удаляем временные файлы
-        try:
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
-        except Exception as e:
-            print(f"Ошибка удаления временного файла {pdf_path}: {e}")
+        await message.answer(f"Ошибка при конвертации: {e}")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return
 
-if __name__ == "__main__":
-    print("🚀 Запуск бота...")
-    
-    # Проверяем необходимые переменные окружения
-    required_vars = ["BOT_TOKEN", "PUBLIC_BASE_URL", "PUBLISH_DIR", "TMP_DIR"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        print(f"❌ Отсутствуют переменные окружения: {', '.join(missing_vars)}")
-        exit(1)
-    
-    # Создаем необходимые директории
-    os.makedirs(TMP_DIR, exist_ok=True)
-    os.makedirs(PUBLISH_DIR, exist_ok=True)
-    
-    print(f"📁 Временная папка: {TMP_DIR}")
-    print(f"📁 Папка публикации: {PUBLISH_DIR}")
-    print(f"🔗 Базовый URL: {PUBLIC_BASE_URL}")
-    print(f"📏 Максимальный размер файла: {MAX_FILE_MB}MB")
-    print(f"🖼️ DPI по умолчанию: {DPI_DEFAULT}")
-    print(f"⚡ Параллелизм: {CONCURRENCY}")
-    
-    try:
-        asyncio.run(dp.start_polling(bot))
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен")
-    finally:
-        executor.shutdown(wait=True)
+    # result: (success, msg, tiff_path, url, size, stderr)
+    success, user_msg, tiff_path, public_url, file_size, stderr = result
+    if not success:
+        await message.answer(user_msg + (f"\n> {stderr}" if stderr else ""))
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return
+
+    # Логика выдачи файла или ссылки
+    mb = file_size / 1024/1024
+    txt = f"Файл готов: {public_url}\nРазмер: {mb:.2f}MB"
+    # Telegram предел ~50MB на файл
+    if mb <= 50:
+        try:
+            await message.answer_document(FSInputFile(tiff_path), caption=txt)
+        except Exception:
+            await message.answer(txt)
+    else:
+        await message.answer(txt)
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
