@@ -5,5 +5,12 @@ services:
     restart: always
     environment:
       - BOT_TOKEN
+      - PUBLIC_BASE_URL=https://yourdomain.com
+      - PUBLISH_DIR=/app/published
+      - TMP_DIR=/app/temp
+      - MAX_FILE_MB=100
+      - GS_PATH=/usr/bin/gs
+      - DPI_DEFAULT=96
+      - CONCURRENCY=2
     volumes:
       - ./temp:/app/temp
