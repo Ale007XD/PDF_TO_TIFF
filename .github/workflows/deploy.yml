@@ -22,6 +22,7 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          envs: BOT_TOKEN
           script: |
             set -e
 
@@ -41,14 +42,12 @@ jobs:
 
             cd "$APP_DIR"
 
-            # Проверка docker и docker compose (v2 - подкоманда)
             if ! command -v docker >/dev/null 2>&1; then
-              echo "❌ Docker не установлен на VPS. Установите Docker и повторите."
+              echo "❌ Docker не установлен!"
               exit 1
             fi
-
             if ! docker compose version >/dev/null 2>&1; then
-              echo "❌ 'docker compose' недоступен. Установите Docker Compose v2."
+              echo "❌ 'docker compose' не найден!"
               exit 1
             fi
 
@@ -62,7 +61,7 @@ jobs:
             docker compose build --no-cache
 
             echo "🚀 Запуск приложения..."
-            docker compose up -d --remove-orphans
+            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
 
             echo "📋 Статус контейнеров:"
             docker compose ps
