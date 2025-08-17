@@ -10,19 +10,35 @@ from dotenv import load_dotenv
 from pdf_to_tiff import process_pdf
 from utils import is_safe_filename, get_file_size_mb
 from concurrent.futures import ProcessPoolExecutor
-# Основные переменные загружаются из .env
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
-PUBLISH_DIR = os.getenv("PUBLISH_DIR")
-TMP_DIR = os.getenv("TMP_DIR")
-MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", 100))
-DPI_DEFAULT = int(os.getenv("DPI_DEFAULT", 96))
-GS_PATH = os.getenv("GS_PATH", "/usr/bin/gs")
-CONCURRENCY = int(os.getenv("CONCURRENCY", 2))
+
+# Безопасная загрузка переменных окружения
+load_dotenv()  # .env (БЕЗ required, т.к. prefer env for production)
+
+# Чтение токена из переменных окружения
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "Переменная окружения BOT_TOKEN не установлена!\n"
+        "1. Убедитесь, что она передана через docker-compose.yml или в файле .env\n"
+        "2. Для Docker Compose используйте:\n"
+        "   environment:\n"
+        "     - BOT_TOKEN=ваш_бот_токен\n"
+        "3. Для GitHub Actions секрет должен называться BOT_TOKEN и быть актуальным!\n"
+        "4. Проверьте отсутствие пробелов и кавычек в начале/конце."
+    )
+
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL")
+PUBLISH_DIR = os.environ.get("PUBLISH_DIR", "/app/published")
+TMP_DIR = os.environ.get("TMP_DIR", "/app/temp")
+MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", 100))
+DPI_DEFAULT = int(os.environ.get("DPI_DEFAULT", 96))
+GS_PATH = os.environ.get("GS_PATH", "/usr/bin/gs")
+CONCURRENCY = int(os.environ.get("CONCURRENCY", 2))
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 executor = ProcessPoolExecutor(CONCURRENCY)
+
 HELP_TEXT = (
     "Бот принимает одностраничные PDF (CMYK в кривых) "
     "и возвращает TIFF (CMYK+LZW, 96 DPI) и ссылку на скачивание.\n\n"
@@ -32,23 +48,29 @@ HELP_TEXT = (
     "- Лимит файла: 100MB\n"
     "- После 14 дней файл удаляется\n\n"
     "Внимание!\n"
-    "CMYK TIFF может отображаться некорректно в некоторых просмотрщиках (особенно старые Windows/Preview/Photos). Это не ошибка: используйте профессиональные редакторы!"
+    "CMYK TIFF может отображаться некорректно в некоторых просмотрщиках (особенно старые Windows/Preview/Photos). "
+    "Это не ошибка: используйте профессиональные редакторы!"
 )
+
 START_TEXT = (
     "Отправьте одностраничный PDF, я конвертирую его "
     "в TIFF (CMYK+LZW, 96 DPI) и дам прямую ссылку на скачивание."
 )
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(START_TEXT)
+
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer(HELP_TEXT)
+
 @dp.message(lambda m: m.document is not None)
 async def handle_doc(message: types.Message):
     doc = message.document
     filename = doc.file_name
     size_mb = get_file_size_mb(doc)
+
     # Проверка имени и расширения
     if not is_safe_filename(filename) or not filename.lower().endswith('.pdf'):
         await message.answer("Файл должен быть PDF и с валидным именем.")
@@ -58,6 +80,7 @@ async def handle_doc(message: types.Message):
         await message.answer(f"Размер файла превышает лимит {MAX_FILE_MB}MB.")
         return
     await message.answer("Файл получен, конвертирую...")
+
     # Уникальная рабочая папка в TMP для изоляции
     u = str(uuid.uuid4())
     tmp_dir = os.path.join(TMP_DIR, u)
@@ -84,7 +107,6 @@ async def handle_doc(message: types.Message):
     # Логика выдачи файла или ссылки
     mb = file_size / 1024/1024
     txt = f"Файл готов: {public_url}\nРазмер: {mb:.2f}MB"
-    # Telegram предел ~50MB на файл
     if mb <= 50:
         try:
             await message.answer_document(FSInputFile(tiff_path), caption=txt)
