@@ -10,13 +10,10 @@ from pdf_to_tiff import process_pdf
 from utils import is_safe_filename, get_file_size_mb
 from concurrent.futures import ProcessPoolExecutor
 
-# Получаем значения только через переменные окружения
+# Обязательные переменные окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError(
-        "Не задана переменная окружения BOT_TOKEN! "
-        "Передайте её через docker-compose или напрямую перед запуском контейнера."
-    )
+    raise RuntimeError("Не задана переменная окружения BOT_TOKEN! Передайте её через docker-compose или экпортируйте перед запуском.")
 
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost")
 PUBLISH_DIR = os.environ.get("PUBLISH_DIR", "/app/published")
@@ -37,14 +34,12 @@ HELP_TEXT = (
     "- Только CMYK-контент\n"
     "- Лимит файла: 100MB\n"
     "- После 14 дней файл удаляется\n\n"
-    "Внимание!\n"
-    "CMYK TIFF может отображаться некорректно в некоторых просмотрщиках (особенно старые Windows/Preview/Photos). "
+    "Внимание!\nCMYK TIFF может отображаться некорректно в некоторых просмотрщиках (особенно старые Windows/Preview/Photos). "
     "Это не ошибка: используйте профессиональные редакторы!"
 )
 
 START_TEXT = (
-    "Отправьте одностраничный PDF, я конвертирую его "
-    "в TIFF (CMYK+LZW, 96 DPI) и дам прямую ссылку на скачивание."
+    "Отправьте одностраничный PDF, я конвертирую его в TIFF (CMYK+LZW, 96 DPI) и дам прямую ссылку на скачивание."
 )
 
 @dp.message(Command("start"))
@@ -67,7 +62,6 @@ async def handle_doc(message: types.Message):
     if size_mb > MAX_FILE_MB:
         await message.answer(f"Размер файла превышает лимит {MAX_FILE_MB}MB.")
         return
-
     await message.answer("Файл получен, конвертирую...")
 
     u = str(uuid.uuid4())
@@ -75,7 +69,6 @@ async def handle_doc(message: types.Message):
     os.makedirs(tmp_dir, exist_ok=True)
     src_pdf_path = os.path.join(tmp_dir, "input.pdf")
     await bot.download(doc, src_pdf_path)
-
     try:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
