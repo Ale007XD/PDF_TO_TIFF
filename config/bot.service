@@ -1,0 +1,16 @@
+# config/bot.service
+[Unit]
+Description=Telegram PDF→TIFF Bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/home/botuser/telegram-pdf-tiff-bot
+EnvironmentFile=/home/botuser/telegram-pdf-tiff-bot/.env
+ExecStart=/home/botuser/telegram-pdf-tiff-bot/.venv/bin/python main.py
+Restart=on-failure
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
