@@ -73,7 +73,6 @@ def process_pdf(src_pdf_path, orig_name, tmp_dir, publish_dir, public_url, gs_pa
             return False, "Превышено время ожидания при проверке количества страниц", None, None, 0, ""
         except Exception as e:
             return False, "Ошибка при проверке количества страниц. Проверьте PDF.", None, None, 0, str(e)
-
         # Проверка на шифрование
         try:
             encrypted_check = [
@@ -120,15 +119,14 @@ def process_pdf(src_pdf_path, orig_name, tmp_dir, publish_dir, public_url, gs_pa
             logger.info(f"Очистка завершена. Удалено файлов: {len(cleaned_files)}")
         if clean_errors:
             logger.warning(f"Ошибки при очистке ({len(clean_errors)}): {'; '.join(clean_errors)}")
+
         if not os.path.exists(tiff_out_tmp_path):
             return False, "TIFF-файл не найден после конвертации", None, None, 0, ""
-
         try:
             shutil.move(tiff_out_tmp_path, tiff_out_final)
             os.umask(0o022)
         except Exception as e:
             return False, "Ошибка при перемещении файла в директорию публикации", None, None, 0, str(e)
-
         try:
             final_file_size = os.path.getsize(tiff_out_final)
         except Exception as e:
@@ -137,8 +135,8 @@ def process_pdf(src_pdf_path, orig_name, tmp_dir, publish_dir, public_url, gs_pa
         if not os.path.abspath(tiff_out_final).startswith(os.path.abspath(target_dir)):
             return False, "Ошибка безопасности: недопустимый путь к файлу", None, None, 0, ""
 
-        url = f"{public_url}/files/{today}/{unique_tiff_name}"
 
+        url = f"{public_url}/files/{today}/{unique_tiff_name}"
         logger.info(f"Успешная конвертация: {orig_name} -> {unique_tiff_name} ({final_file_size} байт)")
         return True, "Конвертация успешно завершена!", tiff_out_final, url, final_file_size, ""
     except Exception as e:
