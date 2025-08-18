@@ -4,38 +4,62 @@ import shutil
 import logging
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import FSInputFile
-from aiogram.fsm.storage.memory import MemoryStorage
-from pdf_to_tiff import process_pdf
-from utils import is_safe_filename, get_file_size_mb
 
+# Проверяем, что aiogram установлен. Если нет, это вызовет ошибку при запуске.
+try:
+    from aiogram import Bot, Dispatcher, types
+    from aiogram.filters import Command
+    from aiogram.types import FSInputFile
+    from aiogram.fsm.storage.memory import MemoryStorage
+except ImportError:
+    raise RuntimeError("Библиотека aiogram не установлена. Выполните: pip install aiogram")
+
+# Проверяем наличие наших локальных модулей
+try:
+    from pdf_to_tiff import process_pdf
+    # Вспомогательные функции, которые вы упоминали, должны быть в этом файле
+    from utils import is_safe_filename, get_file_size_mb
+except ImportError:
+    raise RuntimeError("Не найдены локальные модули (pdf_to_tiff.py или utils.py). Убедитесь, что они находятся в той же директории.")
+
+
+# Настройка логирования для отслеживания работы бота
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# --- Конфигурация из переменных окружения ---
+# Рекомендуется использовать переменные окружения для безопасности и гибкости
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("Критическая ошибка: переменная окружения BOT_TOKEN не задана.")
+
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost")
 PUBLISH_DIR = os.environ.get("PUBLISH_DIR", "/app/published")
 TMP_DIR = os.environ.get("TMP_DIR", "/app/temp")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "100"))
 DPI_DEFAULT = int(os.environ.get("DPI_DEFAULT", "96"))
 GS_PATH = os.environ.get("GS_PATH", "/usr/bin/gs")
+# Количество одновременных процессов для обработки PDF
 CONCURRENCY = int(os.environ.get("CONCURRENCY", "2"))
 
+
+# --- Инициализация бота и диспетчера ---
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+# Пул процессов для выполнения тяжелых, блокирующих операций (конвертация PDF)
 executor = ProcessPoolExecutor(CONCURRENCY)
 
-HELP_TEXT = f"""Бот принимает PDF и возвращает TIFF (CMYK, LZW, 96 DPI/настраивается через окружение) + ссылку на скачивание.
-Лимит файла: {MAX_FILE_MB}MB."""
 
+# --- Тексты для команд ---
+# ИСПРАВЛЕНО: f-строка теперь применяется ко всей многострочной конструкции.
+HELP_TEXT = f"""Бот принимает PDF и возвращает TIFF (CMYK, LZW, {DPI_DEFAULT} DPI) + ссылку.
+Лимит файла: {MAX_FILE_MB}MB."""
 START_TEXT = "Отправьте PDF, и я сконвертирую его в TIFF и дам ссылку на скачивание."
 
+
+# --- Обработчики команд ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(START_TEXT)
@@ -44,60 +68,91 @@ async def cmd_start(message: types.Message):
 async def cmd_help(message: types.Message):
     await message.answer(HELP_TEXT)
 
+
+# --- Основной обработчик документов ---
 @dp.message(lambda m: m.document is not None)
 async def handle_doc(message: types.Message):
     doc = message.document
     filename = doc.file_name
+    
+    # Предполагается, что эти функции реализованы в utils.py
     size_mb = get_file_size_mb(doc)
+
     if not is_safe_filename(filename) or not filename.lower().endswith('.pdf'):
-        await message.answer("Файл должен быть PDF и с валидным именем.")
+        await message.answer("Файл должен быть в формате PDF и иметь безопасное имя.")
         return
+
     if size_mb > MAX_FILE_MB:
-        await message.answer(f"Размер файла превышает лимит {MAX_FILE_MB}MB.")
+        await message.answer(f"Размер файла ({size_mb:.2f}MB) превышает лимит в {MAX_FILE_MB}MB.")
         return
-    await message.answer("✅ Файл получен, начинаю обработку...")
+
+    await message.answer("✅ Файл получен, начинаю обработку. Это может занять некоторое время...")
+
+    # Создание уникальной временной директории для изоляции обработки
     u = str(uuid.uuid4())
     tmp_dir = os.path.join(TMP_DIR, u)
     src_pdf_path = os.path.join(tmp_dir, "input.pdf")
+
     try:
         os.makedirs(tmp_dir, exist_ok=True)
         await bot.download(doc, destination=src_pdf_path)
+
         if not os.path.exists(src_pdf_path) or os.path.getsize(src_pdf_path) == 0:
             logging.error(f"Файл НЕ СОХРАНЕН или пуст: {src_pdf_path}")
             await message.answer("❌ Не удалось сохранить файл. Обработка невозможна.")
             return
+        
         logging.info(f"Файл сохранен: {src_pdf_path}, размер: {os.path.getsize(src_pdf_path)} байт.")
+
+        # Вынос блокирующей функции process_pdf в отдельный процесс
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             executor,
-            process_pdf,
+            process_pdf, # Функция, которая будет выполнена
+            # Далее идут аргументы для этой функции
             src_pdf_path, filename, tmp_dir, PUBLISH_DIR, PUBLIC_BASE_URL, GS_PATH, DPI_DEFAULT
         )
+        
         success, user_msg, tiff_path, public_url, file_size, stderr = result
+
         if not success:
-            logging.error(f"Ошибка обработки: {user_msg}\n{stderr}")
-            await message.answer(user_msg + (f"\n> `{stderr}`" if stderr else ""))
+            logging.error(f"Ошибка обработки: {user_msg}\nДетали: {stderr}")
+            # Отправляем пользователю чистое сообщение об ошибке, а детали смотрим в логах
+            await message.answer(f"❌ {user_msg}" + (f"\n> `{stderr}`" if stderr else ""))
             return
+
         mb = file_size / 1024 / 1024
-        txt = f"Файл готов: {public_url}\nРазмер: {mb:.2f}MB"
+        txt = f"✅ Файл готов: {public_url}\nРазмер: {mb:.2f}MB"
+        
+        # Отправка файла документом, если он не слишком большой
         if mb <= 50:
             await message.answer_document(FSInputFile(tiff_path), caption=txt)
         else:
             await message.answer(txt)
+
     except Exception as e:
         logging.exception("Непредвиденная ошибка в handle_doc:")
-        await message.answer(f"Произошла ошибка: {e}")
+        await message.answer(f"Произошла критическая ошибка: {e}")
     finally:
+        # Гарантированная очистка временной директории
         logging.info(f"Очистка временной директории: {tmp_dir}")
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+
+# --- Точка входа ---
 if __name__ == "__main__":
+    # Создаем необходимые директории при старте
     os.makedirs(TMP_DIR, exist_ok=True)
     os.makedirs(PUBLISH_DIR, exist_ok=True)
+    
     logging.info("Бот запускается...")
     try:
+        # Запуск бота
         asyncio.run(dp.start_polling(bot))
     except KeyboardInterrupt:
-        logging.info("Бот остановлен.")
+        logging.info("Бот остановлен вручную.")
     finally:
+        # Корректное завершение работы пула процессов
         executor.shutdown(wait=True)
+        logging.info("Пул процессов остановлен.")
+
