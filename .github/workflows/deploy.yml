@@ -1,19 +1,15 @@
 name: "CI/CD: Deploy PDF to TIFF Bot"
-
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
 env:
   APP_NAME: "pdf-to-tiff-bot"
-
 jobs:
   deploy:
     name: "Deploy Bot to Server"
     runs-on: ubuntu-latest
-
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
@@ -48,10 +44,14 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
-            set -e
+            set -euxo pipefail
+
+            # На всякий случай удаляем старый контейнер по имени,
+            # если он остался в "Exited" или "Created" состоянии
+            docker ps -a --filter "name=^/pdf_to_tiff_bot$" --format "{{.ID}}" | xargs -r docker rm -f
+
             cd ~/apps/${{ env.APP_NAME }}
-            # Остановка и удаление старого контейнера (решает конфликт имён!)
-            docker rm -f pdf_to_tiff_bot || true
+            # Версия >2 не требует version: в docker-compose.yml. Убираем предупреждение по версии!
 
             echo "==> Stopping and removing old containers..."
             docker compose down --remove-orphans || true
