@@ -1,23 +1,62 @@
+# Имя воркфлоу, которое будет отображаться в интерфейсе GitHub Actions
 name: "CI/CD: Deploy PDF to TIFF Bot"
 
+# Триггеры для запуска воркфлоу
 on:
+  # Запускать при пуше в ветку 'main'
   push:
     branches:
-      - main # Запуск при пуше в основную ветку
-  workflow_dispatch: # Возможность ручного запуска
+      - main
+  # Позволяет запускать воркфлоу вручную из интерфейса GitHub
+  workflow_dispatch:
 
+# Переменные окружения, доступные во всех задачах
 env:
+  # Имя директории приложения на сервере
   APP_NAME: "pdf-to-tiff-bot"
 
+# Задачи, которые будут выполняться
 jobs:
   deploy:
+    # Название задачи
     name: "Deploy Bot to Server"
+    # Тип виртуальной машины для выполнения задачи
     runs-on: ubuntu-latest
 
+    # Шаги, которые выполняются в рамках задачи
     steps:
+      # --- ШАГ 1: Клонирование репозитория ---
+      # Этот шаг скачивает код вашего репозитория на виртуальную машину GitHub Actions
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
+      # --- ШАГ 2: Создание .env файла ---
+      # Создаем .env файл локально в воркфлоу. Он будет скопирован на сервер на следующем шаге.
+      - name: "Create .env file"
+        run: |
+          echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
+          echo "PUBLIC_BASE_URL=https://yourdomain.com" >> .env
+          echo "PUBLISH_DIR=/app/published" >> .env
+          echo "TMP_DIR=/app/temp" >> .env
+          echo "MAX_FILE_MB=100" >> .env
+          echo "GS_PATH=/usr/bin/gs" >> .env
+          echo "DPI_DEFAULT=96" >> .env
+          echo "CONCURRENCY=2" >> .env
+
+      # --- ШАГ 3: Копирование файлов на сервер ---
+      # Используем scp для безопасного копирования всех необходимых файлов
+      - name: "Copy files to server"
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "bot.py,pdf_to_tiff.py,utils.py,requirements.txt,Dockerfile,docker-compose.yml,.env"
+          target: "~/apps/${{ env.APP_NAME }}"
+          strip_components: 1 # Не создавать лишнюю вложенность папок
+
+      # --- ШАГ 4: Развертывание приложения на сервере по SSH ---
       - name: "Deploy application via SSH"
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -25,64 +64,28 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          # Скрипт, который будет выполнен на вашем сервере
           script: |
             set -e  # Прерывать выполнение при любой ошибке
-
-            APP_DIR="$HOME/apps/${{ env.APP_NAME }}"
             
-            # --- ШАГ 1: Подготовка окружения на сервере ---
-            echo "==> Creating application directory..."
-            mkdir -p "$APP_DIR"
-            cd "$APP_DIR"
-
-            # --- ШАГ 2: Создание .env файла с секретом ---
-            echo "==> Creating .env file from GitHub Secrets..."
-            # Этот файл будет прочитан Docker Compose
-            cat > .env <<EOF
-            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            PUBLIC_BASE_URL=https://yourdomain.com
-            PUBLISH_DIR=/app/published
-            TMP_DIR=/app/temp
-            MAX_FILE_MB=100
-            GS_PATH=/usr/bin/gs
-            DPI_DEFAULT=96
-            CONCURRENCY=2
-            EOF
-
-            # --- ШАГ 3: Копирование файлов проекта ---
-            # Предполагается, что репозиторий клонируется локально в воркфлоу
-            # и копируется на сервер. Здесь для простоты показано создание docker-compose.yml
-            # Лучше всего - копировать файлы из репозитория.
-            echo "==> Creating docker-compose.yml..."
-            cat > docker-compose.yml <<'EOT'
-            version: '3.8'
-
-            services:
-              bot:
-                build:
-                  context: .
-                container_name: pdf_to_tiff_bot
-                restart: always
-                env_file:
-                  - .env
-                volumes:
-                  - ./published_files:/app/published
-                  - ./temp:/app/temp
-            EOT
+            # Переходим в директорию приложения
+            cd ~/apps/${{ env.APP_NAME }}
             
-            # Также нужно скопировать bot.py, requirements.txt и Dockerfile
-            # Здесь предполагается, что они уже есть на сервере
-            # или копируются отдельным шагом (например, через scp).
-
-            # --- ШАГ 4: Пересборка и запуск контейнера ---
-            echo "==> Stopping old container if it exists..."
-            docker compose down --remove-orphans || true
+            # 1. Остановка и удаление старых контейнеров (РЕШАЕТ ПРОБЛЕМУ КОНФЛИКТА ИМЕН)
+            echo "==> Stopping and removing old containers..."
+            docker compose down --remove-orphans
             
-            echo "==> Building and starting new container..."
+            # 2. Пересборка Docker-образа с последними изменениями
+            echo "==> Building new Docker image..."
             docker compose build --no-cache
-            docker compose up -d --force-recreate
             
-            # --- ШАГ 5: Проверка логов ---
+            # 3. Запуск нового контейнера в фоновом режиме
+            echo "==> Starting new container..."
+            docker compose up -d
+            
+            # 4. Проверка логов для убедительности, что все запустилось
             echo "==> Checking container logs..."
-            sleep 5 # Даем боту время на запуск
+            sleep 5 # Даем боту немного времени на запуск
             docker compose logs --tail=50
+            
+            echo "✅ Deployment successful!"
