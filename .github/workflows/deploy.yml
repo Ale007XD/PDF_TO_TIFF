@@ -38,7 +38,7 @@ jobs:
             docker rm -f pdf_to_tiff_bot || true
 
             echo "====== ШАГ 2. docker compose config | grep BOT_TOKEN (отладка): ======"
-            export BOT_TOKEN="${BOT_TOKEN}"
+            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
             docker compose config | grep BOT_TOKEN || true
             echo "======================================================================"
 
@@ -48,4 +48,4 @@ jobs:
             BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
             echo "======================================================================"
 
-            docker compose logs --tail=40
+            docker compose logs --tail=20
