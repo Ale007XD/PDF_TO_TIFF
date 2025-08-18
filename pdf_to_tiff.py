@@ -2,33 +2,12 @@ import os
 import subprocess
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-def get_page_count(pdf_path: str) -> int | None:
-    """Подсчет страниц через pdfinfo (можно заменить через Ghostscript)."""
-    try:
-        command = ['pdfinfo', pdf_path]
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        for line in result.stdout.splitlines():
-            if line.lower().startswith('pages:'):
-                return int(line.split(':')[1].strip())
-        return None
-    except Exception:
-        return None
-
 def process_pdf(src_pdf_path, filename, tmp_dir, publish_dir, public_base_url, gs_path, dpi_default):
     """
-    Конвертация PDF в TIFF через Ghostscript.
+    Конвертация PDF в TIFF через Ghostscript (CMYK, LZW, 96dpi/настраивается).
+    Никаких проверок страниц!
     """
-    pages = get_page_count(src_pdf_path)
-    if pages is None:
-        return False, "Ошибка: не удалось проанализировать PDF-файл.", None, None, 0, "pdfinfo"
-    if pages > 1:
-        return False, f"Ошибка: бот принимает только одностраничные PDF. Ваш файл — {pages} страниц.", None, None, 0, ""
-    output_filename = os.path.splitext(filename) + ".tiff"
+    output_filename = os.path.splitext(filename)[0] + ".tiff"
     tiff_path = os.path.join(publish_dir, output_filename)
 
     command = [
@@ -38,7 +17,7 @@ def process_pdf(src_pdf_path, filename, tmp_dir, publish_dir, public_base_url, g
         '-dBATCH',
         '-dSAFER',
         f'-r{dpi_default}',
-        '-sDEVICE=tiff32nc',           # CMYK 8bpc/channel
+        '-sDEVICE=tiff32nc',
         '-dColorConversionStrategy=/CMYK',
         '-dProcessColorModel=/DeviceCMYK',
         '-dCompress=true',
