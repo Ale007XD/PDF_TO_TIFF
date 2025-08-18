@@ -1,8 +1,8 @@
-import asyncio
 import os
 import uuid
 import shutil
 import logging
+import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -32,10 +32,10 @@ dp = Dispatcher(storage=MemoryStorage())
 executor = ProcessPoolExecutor(CONCURRENCY)
 
 HELP_TEXT = (
-    "Бот принимает одностраничные PDF и возвращает TIFF (CMYK, LZW, 96 DPI) + ссылку на скачивание.\n\n"
+    "Бот принимает PDF и возвращает TIFF (CMYK, LZW, 96 DPI) + ссылку на скачивание.\n"
     f"Лимит файла: {MAX_FILE_MB}MB."
 )
-START_TEXT = "Отправьте PDF, я конвертирую его в TIFF и дам ссылку на скачивание."
+START_TEXT = "Отправьте PDF, и я конвертирую его в TIFF и дам ссылку на скачивание."
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -65,7 +65,7 @@ async def handle_doc(message: types.Message):
         await bot.download(doc, destination=src_pdf_path)
         if not os.path.exists(src_pdf_path) or os.path.getsize(src_pdf_path) == 0:
             logging.error(f"Файл НЕ СОХРАНЕН или пуст: {src_pdf_path}")
-            await message.answer("❌ **Ошибка:** не удалось сохранить файл. Обработка невозможна.")
+            await message.answer("❌ Не удалось сохранить файл. Обработка невозможна.")
             return
         logging.info(f"Файл сохранен: {src_pdf_path}, размер: {os.path.getsize(src_pdf_path)} байт.")
         loop = asyncio.get_event_loop()
