@@ -9,7 +9,6 @@ WORKDIR /app
 # poppler-utils - для надежного анализа PDF (подсчет страниц и т.д.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ghostscript \
-    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем файл с Python-зависимостями
