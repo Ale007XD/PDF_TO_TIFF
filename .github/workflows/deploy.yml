@@ -1,51 +1,88 @@
-name: "CI/CD: Debug deploy BOT_TOKEN"
+name: "CI/CD: Deploy PDF to TIFF Bot"
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main # Запуск при пуше в основную ветку
+  workflow_dispatch: # Возможность ручного запуска
 
 env:
-  APP_NAME: pdf-to-tiff-bot
+  APP_NAME: "pdf-to-tiff-bot"
 
 jobs:
-  debug-deploy:
-    name: "DEBUG: Деплой и проверка переменной BOT_TOKEN"
+  deploy:
+    name: "Deploy Bot to Server"
     runs-on: ubuntu-latest
+
     steps:
-      - name: "SSH-деплой с debug-echo"
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Deploy application via SSH"
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
-            set -e
-            export BOT_TOKEN="${BOT_TOKEN}"
-            echo "====== ШАГ 1. Переменная из github actions доступна в ssh: ======"
-            echo "DEBUG-echo BOT_TOKEN = $BOT_TOKEN"
-            echo "DEBUG-env (printenv | grep BOT_TOKEN) :"
-            printenv | grep BOT_TOKEN
-            echo "=================================================================="
+            set -e  # Прерывать выполнение при любой ошибке
 
             APP_DIR="$HOME/apps/${{ env.APP_NAME }}"
-            REPO_URL="https://github.com/${{ github.repository }}"
-
+            
+            # --- ШАГ 1: Подготовка окружения на сервере ---
+            echo "==> Creating application directory..."
+            mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
+            # --- ШАГ 2: Создание .env файла с секретом ---
+            echo "==> Creating .env file from GitHub Secrets..."
+            # Этот файл будет прочитан Docker Compose
+            cat > .env <<EOF
+            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+            PUBLIC_BASE_URL=https://yourdomain.com
+            PUBLISH_DIR=/app/published
+            TMP_DIR=/app/temp
+            MAX_FILE_MB=100
+            GS_PATH=/usr/bin/gs
+            DPI_DEFAULT=96
+            CONCURRENCY=2
+            EOF
+
+            # --- ШАГ 3: Копирование файлов проекта ---
+            # Предполагается, что репозиторий клонируется локально в воркфлоу
+            # и копируется на сервер. Здесь для простоты показано создание docker-compose.yml
+            # Лучше всего - копировать файлы из репозитория.
+            echo "==> Creating docker-compose.yml..."
+            cat > docker-compose.yml <<'EOT'
+            version: '3.8'
+
+            services:
+              bot:
+                build:
+                  context: .
+                container_name: pdf_to_tiff_bot
+                restart: always
+                env_file:
+                  - .env
+                volumes:
+                  - ./published_files:/app/published
+                  - ./temp:/app/temp
+            EOT
+            
+            # Также нужно скопировать bot.py, requirements.txt и Dockerfile
+            # Здесь предполагается, что они уже есть на сервере
+            # или копируются отдельным шагом (например, через scp).
+
+            # --- ШАГ 4: Пересборка и запуск контейнера ---
+            echo "==> Stopping old container if it exists..."
             docker compose down --remove-orphans || true
-            docker rm -f pdf_to_tiff_bot || true
-
-            echo "====== ШАГ 2. docker compose config | grep BOT_TOKEN (отладка): ======"
-            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
-            docker compose config | grep BOT_TOKEN || true
-            echo "======================================================================"
-
+            
+            echo "==> Building and starting new container..."
             docker compose build --no-cache
-
-            echo "====== ШАГ 3. Сам запуск, переменная передана явно (ГАРАНТИЯ!): ======"
-            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
-            echo "======================================================================"
-
-            docker compose logs --tail=20
+            docker compose up -d --force-recreate
+            
+            # --- ШАГ 5: Проверка логов ---
+            echo "==> Checking container logs..."
+            sleep 5 # Даем боту время на запуск
+            docker compose logs --tail=50
