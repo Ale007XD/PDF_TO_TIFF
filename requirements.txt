@@ -1,5 +1,4 @@
 aiogram==3.*
-python-magic
-filetype
 aiohttp
+filetype
 tqdm
