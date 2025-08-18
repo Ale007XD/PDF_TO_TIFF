@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
-  bot:
-    build:
-      context: .
+  pdf_to_tiff_bot:
+    build: .
     container_name: pdf_to_tiff_bot
-    restart: always
-    # Используем env_file для удобства и безопасности
     env_file:
       - .env
+    restart: unless-stopped   # Авто-перезапуск (кроме ручной остановки)
     volumes:
-      - ./published_files:/app/published
+      - ./published:/app/published
       - ./temp:/app/temp
+    ports:
+      - "8080:8080"
