@@ -1,20 +1,17 @@
-name: "CI/CD: Автоматический билд и деплой на VPS"
+name: "CI/CD: Debug deploy BOT_TOKEN"
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 env:
   APP_NAME: pdf-to-tiff-bot
 
 jobs:
-  deploy:
-    name: "Сборка и деплой на VPS"
+  debug-deploy:
+    name: "DEBUG: Деплой и проверка переменной BOT_TOKEN"
     runs-on: ubuntu-latest
     steps:
-      - name: "SSH-деплой на VPS"
+      - name: "SSH-деплой с debug-echo"
         uses: appleboy/ssh-action@v1.0.3
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -26,49 +23,29 @@ jobs:
           script: |
             set -e
             export BOT_TOKEN="${BOT_TOKEN}"
+            echo "====== ШАГ 1. Переменная из github actions доступна в ssh: ======"
+            echo "DEBUG-echo BOT_TOKEN = $BOT_TOKEN"
+            echo "DEBUG-env (printenv | grep BOT_TOKEN) :"
+            printenv | grep BOT_TOKEN
+            echo "=================================================================="
 
             APP_DIR="$HOME/apps/${{ env.APP_NAME }}"
             REPO_URL="https://github.com/${{ github.repository }}"
 
-            echo "⏬ Обновление проекта с GitHub..."
-            mkdir -p "$APP_DIR"
-            if [ ! -d "$APP_DIR/.git" ]; then
-              git clone "$REPO_URL" "$APP_DIR"
-            else
-              cd "$APP_DIR"
-              git fetch origin
-              git reset --hard origin/main
-            fi
-
             cd "$APP_DIR"
 
-            if ! command -v docker >/dev/null 2>&1; then
-              echo "❌ Docker не установлен!"
-              exit 1
-            fi
-            if ! docker compose version >/dev/null 2>&1; then
-              echo "❌ 'docker compose' не найден!"
-              exit 1
-            fi
-
-            echo "🛑 Остановка старого приложения..."
             docker compose down --remove-orphans || true
-            # Удаляем старый контейнер с этим именем, если остался в "Exited" либо "Conflict"
             docker rm -f pdf_to_tiff_bot || true
 
-            echo "🧹 Очистка старых образов..."
-            docker image prune -f || true
+            echo "====== ШАГ 2. docker compose config | grep BOT_TOKEN (отладка): ======"
+            export BOT_TOKEN="${BOT_TOKEN}"
+            docker compose config | grep BOT_TOKEN || true
+            echo "======================================================================"
 
-            echo "🔨 Сборка Docker-образа локально на VPS..."
             docker compose build --no-cache
 
-            echo "🚀 Запуск приложения..."
-            docker compose up -d --remove-orphans
+            echo "====== ШАГ 3. Сам запуск, переменная передана явно (ГАРАНТИЯ!): ======"
+            BOT_TOKEN="${BOT_TOKEN}" docker compose up -d --remove-orphans
+            echo "======================================================================"
 
-            echo "📋 Статус контейнеров:"
-            docker compose ps
-
-            echo "📄 Логи (последние 20 строк):"
-            docker compose logs --tail=20
-
-            echo "✅ Деплой завершён!"
+            docker compose logs --tail=40
