@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml
+# .github/workflows/deploy.yml - ИСПРАВЛЕННАЯ ВЕРСИЯ
 name: Deploy Bot to VPS
 on:
   push:
@@ -9,14 +9,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+      - name: Add server to known_hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          
       - name: Copy files to VPS
         run: |
-          rsync -av --exclude='.git*' ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/home/${{ secrets.VPS_USERNAME }}/telegram-pdf-tiff-bot/
+          rsync -av --exclude='.git*' --exclude='*.md' --exclude='.env.example' \
+            -e "ssh -o StrictHostKeyChecking=accept-new" \
+            ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/home/${{ secrets.VPS_USERNAME }}/telegram-pdf-tiff-bot/
+            
       - name: Build & Restart (docker-compose)
         run: |
-          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} 'cd telegram-pdf-tiff-bot && docker compose up -d --build'
+          ssh -o StrictHostKeyChecking=accept-new ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} '
+            cd telegram-pdf-tiff-bot &&
+            docker compose down --remove-orphans &&
+            docker compose up -d --build &&
+            docker compose ps
+          '
