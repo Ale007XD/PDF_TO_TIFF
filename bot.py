@@ -32,10 +32,10 @@ dp = Dispatcher(storage=MemoryStorage())
 executor = ProcessPoolExecutor(CONCURRENCY)
 
 HELP_TEXT = (
-    "Бот принимает PDF и возвращает TIFF (CMYK, LZW, 96 DPI) + ссылку на скачивание.\n"
+    "Бот принимает PDF и возвращает TIFF (CMYK, LZW, 96 DPI/настраивается через окружение) + ссылку на скачивание.\n"
     f"Лимит файла: {MAX_FILE_MB}MB."
 )
-START_TEXT = "Отправьте PDF, и я конвертирую его в TIFF и дам ссылку на скачивание."
+START_TEXT = "Отправьте PDF, и я сконвертирую его в TIFF и дам ссылку на скачивание."
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
