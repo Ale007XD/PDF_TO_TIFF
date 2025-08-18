@@ -1,16 +1,14 @@
 import os
 from datetime import datetime
 import shutil
-import dotenv
-dotenv.load_dotenv()
-PUBLISH_DIR = os.getenv("PUBLISH_DIR", "/srv/files")
-RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 
+PUBLISH_DIR = os.environ.get("PUBLISH_DIR", "/srv/files")
+RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", 14))
 now = datetime.now()
+
 if not os.path.isdir(PUBLISH_DIR):
     print(f"Папка {PUBLISH_DIR} не найдена")
     exit(0)
-
 for folder in os.listdir(PUBLISH_DIR):
     full = os.path.join(PUBLISH_DIR, folder)
     if not os.path.isdir(full):
