@@ -8,6 +8,7 @@ import subprocess
 import uuid
 import magic
 import filetype
+import shutil
 from concurrent.futures import ProcessPoolExecutor
 from dotenv import load_dotenv
 from pathlib import Path
@@ -217,7 +218,7 @@ async def document_handler(message: Message) -> None:
 
         # Перенос результата
         if output_file.exists():
-            output_file.rename(final_file)
+            shutil.move(str(output_file), str(final_file))
             output_size_mb = final_file.stat().st_size / (1024 * 1024)
             link = f"{PUBLIC_BASE_URL}/files/{output_filename}"
             await status_msg.edit_text(
