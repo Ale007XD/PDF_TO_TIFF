@@ -4,7 +4,7 @@ FROM python:3.10-slim
 WORKDIR /bot
 
 RUN apt-get update \
-    && apt-get install -y imagemagick ghostscript icc-profiles nginx python3-venv python3-pip file \
+    && apt-get install -y imagemagick ghostscript icc-profiles-free nginx python3-venv python3-pip file \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
