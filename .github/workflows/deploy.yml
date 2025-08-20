@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# .github/workflows/deploy.yml - ЛУЧШИЙ ВАРИАНТ (создание .env на лету)
 name: Deploy Bot to VPS
 on:
   push:
@@ -23,15 +23,37 @@ jobs:
           
       - name: Copy files to VPS
         run: |
-          rsync -av --exclude='.git*' --exclude='*.md' --exclude='.env.example' \
+          rsync -av --exclude='.git*' --exclude='*.md' --exclude='.env*' \
             -e "ssh -o StrictHostKeyChecking=accept-new" \
             ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/home/${{ secrets.VPS_USERNAME }}/telegram-pdf-tiff-bot/
             
-      - name: Build & Restart (docker-compose)
+      - name: Create .env and deploy
         run: |
           ssh -o StrictHostKeyChecking=accept-new ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} '
             cd telegram-pdf-tiff-bot &&
+            
+            # Создаем .env файл из секретов GitHub
+            cat > .env << EOF
+          BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+          PUBLIC_BASE_URL=${{ secrets.PUBLIC_BASE_URL }}
+          PUBLISH_DIR=${{ secrets.PUBLISH_DIR }}
+          TMP_DIR=${{ secrets.TMP_DIR }}
+          MAX_FILE_MB=${{ secrets.MAX_FILE_MB }}
+          IMAGEMAGICK_PATH=${{ secrets.IMAGEMAGICK_PATH }}
+          ICC_CMYK_PROFILE=${{ secrets.ICC_CMYK_PROFILE }}
+          CONCURRENCY=${{ secrets.CONCURRENCY }}
+          EOF
+            
+            # Устанавливаем права доступа
+            chmod 600 .env &&
+            
+            # Останавливаем старые контейнеры
             docker compose down --remove-orphans &&
+            
+            # Запускаем новые
             docker compose up -d --build &&
-            docker compose ps
+            
+            # Показываем статус
+            docker compose ps &&
+            echo "✅ Деплой завершен успешно!"
           '
