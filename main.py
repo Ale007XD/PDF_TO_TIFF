@@ -56,7 +56,7 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher()
 executor = ProcessPoolExecutor(max_workers=CONCURRENCY)
 
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))  # Укажите ваш channel ID (-100XXXXXXXXXX)
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002868181428"))  # Укажите ваш channel ID (-100XXXXXXXXXX)
 PDF_LINK_PATTERN = r"(https?://[^\s]+\.pdf)"
 
 async def log_and_reply(msg, user, orig_msg=None):
